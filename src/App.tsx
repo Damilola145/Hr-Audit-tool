@@ -32,27 +32,47 @@ const DEFAULT_METRICS: Metric[] = [
 ];
 
 const LAYOFF_METRICS: Metric[] = [
-  { id: 'l1', name: 'Performance Rating', type: MetricType.NUMBER, weight: 0.5 },
-  { id: 'l2', name: 'Skill Criticality', type: MetricType.RATING, weight: 0.3 },
-  { id: 'l3', name: 'Attendance Record', type: MetricType.PERCENTAGE, weight: 0.1 },
-  { id: 'l4', name: 'Disciplinary Record', type: MetricType.NUMBER, weight: 0.1 },
+  { id: 'l1', name: 'Performance Rating', type: MetricType.NUMBER, weight: 0.4 },
+  { id: 'l5', name: 'Years of Service', type: MetricType.NUMBER, weight: 0.3 },
+  { id: 'l2', name: 'Skill Criticality', type: MetricType.RATING, weight: 0.2 },
+  { id: 'l3', name: 'Attendance Record', type: MetricType.PERCENTAGE, weight: 0.05 },
+  { id: 'l4', name: 'Disciplinary Record', type: MetricType.NUMBER, weight: 0.05 },
 ];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'promotion' | 'layoff'>('promotion');
-  const [metrics, setMetrics] = useState<Metric[]>(DEFAULT_METRICS);
+  const [promotionMetrics, setPromotionMetrics] = useState<Metric[]>(DEFAULT_METRICS);
+  const [layoffMetrics, setLayoffMetrics] = useState<Metric[]>(LAYOFF_METRICS);
+  
+  const metrics = activeTab === 'promotion' ? promotionMetrics : layoffMetrics;
+  const setMetrics = activeTab === 'promotion' ? setPromotionMetrics : setLayoffMetrics;
+
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recommendation, setRecommendation] = useState<PromotionRecommendation | null>(null);
   const [layoffRecommendation, setLayoffRecommendation] = useState<LayoffRecommendation | null>(null);
   const [layoffCount, setLayoffCount] = useState(5);
   const [error, setError] = useState<string | null>(null);
+  const [isAddingMetric, setIsAddingMetric] = useState(false);
+  const [newMetricName, setNewMetricName] = useState('');
+
+  const [newCandidate, setNewCandidate] = useState<Partial<Candidate>>({
+    name: '',
+    role: '',
+    department: '',
+    tenure: '',
+    metricValues: (activeTab === 'promotion' ? DEFAULT_METRICS : LAYOFF_METRICS).map(m => ({ metricId: m.id, value: 0 }))
+  });
 
   const handleTabChange = (tab: 'promotion' | 'layoff') => {
     setActiveTab(tab);
-    setMetrics(tab === 'promotion' ? DEFAULT_METRICS : LAYOFF_METRICS);
+    const targetMetrics = tab === 'promotion' ? promotionMetrics : layoffMetrics;
     setRecommendation(null);
     setLayoffRecommendation(null);
+    setNewCandidate(prev => ({
+      ...prev,
+      metricValues: targetMetrics.map(m => ({ metricId: m.id, value: 0 }))
+    }));
   };
 
   const generateSampleData = (count: number) => {
@@ -61,40 +81,39 @@ export default function App() {
     
     const samples: Candidate[] = Array.from({ length: count }).map((_, i) => {
       const id = Math.random().toString(36).substr(2, 9);
-      const currentMetrics = activeTab === 'promotion' ? DEFAULT_METRICS : LAYOFF_METRICS;
+      const currentMetrics = activeTab === 'promotion' ? promotionMetrics : layoffMetrics;
+      const years = Math.floor(Math.random() * 15) + 1;
       return {
         id,
         name: `Staff Member ${i + 1}`,
         role: roles[Math.floor(Math.random() * roles.length)],
         department: depts[Math.floor(Math.random() * depts.length)],
-        tenure: `${Math.floor(Math.random() * 10) + 1} years`,
-        metricValues: currentMetrics.map(m => ({
-          metricId: m.id,
-          value: m.type === MetricType.RATING ? Math.floor(Math.random() * 11) : Math.floor(Math.random() * 101)
-        }))
+        tenure: `${years} years`,
+        metricValues: currentMetrics.map(m => {
+          let val = 0;
+          if (m.id === 'l5') val = years; // Sync Years of Service metric
+          else if (m.type === MetricType.RATING) val = Math.floor(Math.random() * 11);
+          else val = Math.floor(Math.random() * 101);
+          return { metricId: m.id, value: val };
+        })
       };
     });
     setCandidates([...candidates, ...samples]);
   };
 
-  // Form states for adding candidate
-  const [newCandidate, setNewCandidate] = useState<Partial<Candidate>>({
-    name: '',
-    role: '',
-    department: '',
-    tenure: '',
-    metricValues: DEFAULT_METRICS.map(m => ({ metricId: m.id, value: 0 }))
-  });
-
   const handleAddCandidate = () => {
     if (!newCandidate.name || !newCandidate.role) return;
     
+    // Try to find Years of Service metric value to sync with tenure string
+    const yearsMetric = newCandidate.metricValues?.find(mv => mv.metricId === 'l5');
+    const tenureStr = yearsMetric ? `${yearsMetric.value} years` : (newCandidate.tenure || '1 year');
+
     const candidate: Candidate = {
       id: Math.random().toString(36).substr(2, 9),
       name: newCandidate.name!,
       role: newCandidate.role!,
       department: newCandidate.department || 'General',
-      tenure: newCandidate.tenure || '1 year',
+      tenure: tenureStr,
       metricValues: newCandidate.metricValues || [],
       notes: newCandidate.notes
     };
@@ -115,19 +134,51 @@ export default function App() {
   };
 
   const handleAddMetric = () => {
-    const name = prompt("Enter metric name:");
-    if (!name) return;
+    if (!newMetricName.trim()) {
+      setIsAddingMetric(false);
+      return;
+    }
+    
     const newMetric: Metric = {
-      id: `m${metrics.length + 1}`,
-      name,
-      type: MetricType.RATING,
+      id: `m${Date.now()}`,
+      name: newMetricName.trim(),
+      type: MetricType.NUMBER,
       weight: 0
     };
-    setMetrics([...metrics, newMetric]);
-    setNewCandidate({
-      ...newCandidate,
-      metricValues: [...(newCandidate.metricValues || []), { metricId: newMetric.id, value: 0 }]
-    });
+
+    // Update metrics
+    setMetrics(prev => [...prev, newMetric]);
+
+    // Update new candidate form
+    setNewCandidate(prev => ({
+      ...prev,
+      metricValues: [...(prev.metricValues || []), { metricId: newMetric.id, value: 0 }]
+    }));
+
+    // Update existing candidates in pool to have this metric
+    setCandidates(prev => prev.map(c => ({
+      ...c,
+      metricValues: [...c.metricValues, { metricId: newMetric.id, value: 0 }]
+    })));
+
+    setNewMetricName('');
+    setIsAddingMetric(false);
+  };
+
+  const removeMetric = (id: string) => {
+    if (metrics.length <= 1) {
+      alert("At least one metric is required.");
+      return;
+    }
+    setMetrics(prev => prev.filter(m => m.id !== id));
+    setCandidates(prev => prev.map(c => ({
+      ...c,
+      metricValues: c.metricValues.filter(mv => mv.metricId !== id)
+    })));
+    setNewCandidate(prev => ({
+      ...prev,
+      metricValues: prev.metricValues?.filter(mv => mv.metricId !== id)
+    }));
   };
 
   const clearPool = () => {
@@ -167,36 +218,37 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 lg:h-16 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg">
-              <Users className="text-white w-6 h-6" />
+            <div className="bg-indigo-600 p-2 rounded-lg shrink-0">
+              <Users className="text-white w-5 h-5 lg:w-6 lg:h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">Lubell HR Promotion Auditor</h1>
-              <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Mecer Consulting Audit Tool</p>
+              <h1 className="text-lg lg:text-xl font-bold tracking-tight leading-tight">Lubell HR Auditor</h1>
+              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Mecer Consulting Audit Tool</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex bg-slate-100 p-1 rounded-lg mr-4">
+          
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 lg:gap-4">
+            <div className="flex bg-slate-100 p-1 rounded-lg">
               <button 
                 onClick={() => handleTabChange('promotion')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'promotion' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 px-3 py-1.5 text-[10px] lg:text-xs font-bold rounded-md transition-all ${activeTab === 'promotion' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                Promotion Audit
+                Promotion
               </button>
               <button 
                 onClick={() => handleTabChange('layoff')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'layoff' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`flex-1 px-3 py-1.5 text-[10px] lg:text-xs font-bold rounded-md transition-all ${activeTab === 'layoff' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
-                Layoff Audit
+                Layoff
               </button>
             </div>
             <button 
               onClick={handleAnalyze}
               disabled={isAnalyzing || candidates.length < 2}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm text-white ${activeTab === 'promotion' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700'} disabled:bg-slate-300`}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-bold text-xs lg:text-sm transition-all shadow-sm text-white ${activeTab === 'promotion' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700'} disabled:bg-slate-300`}
             >
               {isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4" />}
               {isAnalyzing ? 'Analyzing...' : `Run ${activeTab === 'promotion' ? 'Promotion' : 'Layoff'} Audit`}
@@ -219,13 +271,50 @@ export default function App() {
                   <h2 className="font-semibold text-slate-800">Evaluation Metrics</h2>
                 </div>
                 <button 
-                  onClick={handleAddMetric}
-                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider flex items-center gap-1"
+                  onClick={() => setIsAddingMetric(true)}
+                  className="min-h-[44px] px-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 uppercase tracking-wider flex items-center gap-1 transition-colors"
                 >
-                  <Plus className="w-3 h-3" /> Add Metric
+                  <Plus className="w-4 h-4" /> Add Metric
                 </button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-4 lg:p-6 space-y-4">
+                <AnimatePresence>
+                  {isAddingMetric && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-4 overflow-hidden"
+                    >
+                      <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center gap-2">
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Metric name..."
+                          value={newMetricName}
+                          onChange={e => setNewMetricName(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleAddMetric()}
+                          className="flex-1 bg-white border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                        <button 
+                          onClick={handleAddMetric}
+                          className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setIsAddingMetric(false);
+                            setNewMetricName('');
+                          }}
+                          className="text-slate-400 hover:text-slate-600 p-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
                 {activeTab === 'layoff' && (
                   <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl">
                     <label className="text-xs font-bold text-red-800 uppercase block mb-2">Target Reduction Count</label>
@@ -241,9 +330,17 @@ export default function App() {
                   </div>
                 )}
                 {metrics.map((metric) => (
-                  <div key={metric.id} className="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div key={metric.id} className="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-50 border border-slate-100 group">
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-700">{metric.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-700">{metric.name}</p>
+                        <button 
+                          onClick={() => removeMetric(metric.id)}
+                          className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
                       <p className="text-xs text-slate-400">{metric.type}</p>
                     </div>
                     <div className="w-24">
@@ -282,10 +379,10 @@ export default function App() {
                   Generate 50 Samples
                 </button>
               </div>
-              <div className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 lg:p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Full Name</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Full Name</label>
                     <input 
                       type="text" 
                       placeholder="e.g. John Doe"
@@ -295,7 +392,7 @@ export default function App() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 uppercase">Current Role</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Current Role</label>
                     <input 
                       type="text" 
                       placeholder="e.g. Senior Engineer"
@@ -307,23 +404,37 @@ export default function App() {
                 </div>
                 
                 <div className="space-y-3 pt-2">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Metric Scores</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Metric Scores</p>
                   {metrics.map((m, idx) => (
-                    <div key={m.id} className="flex items-center gap-4">
-                      <label className="text-xs font-medium text-slate-600 w-32 truncate">{m.name}</label>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max={m.type === MetricType.RATING ? 10 : 100}
-                        value={newCandidate.metricValues?.[idx]?.value || 0}
-                        onChange={e => {
-                          const newValues = [...(newCandidate.metricValues || [])];
-                          newValues[idx] = { metricId: m.id, value: parseInt(e.target.value) };
-                          setNewCandidate({...newCandidate, metricValues: newValues});
-                        }}
-                        className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                      />
-                      <span className="text-xs font-mono w-8 text-right">{newCandidate.metricValues?.[idx]?.value || 0}</span>
+                    <div key={m.id} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                      <label className="text-[10px] font-bold text-slate-600 sm:w-32 truncate uppercase">{m.name}</label>
+                      <div className="flex items-center gap-3 flex-1">
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max={m.type === MetricType.RATING ? 10 : 100}
+                          value={newCandidate.metricValues?.[idx]?.value || 0}
+                          onChange={e => {
+                            const newValues = [...(newCandidate.metricValues || [])];
+                            newValues[idx] = { metricId: m.id, value: parseInt(e.target.value) || 0 };
+                            setNewCandidate({...newCandidate, metricValues: newValues});
+                          }}
+                          className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                        />
+                        <input 
+                          type="number"
+                          min="0"
+                          max={m.type === MetricType.RATING ? 10 : 100}
+                          value={newCandidate.metricValues?.[idx]?.value || 0}
+                          onChange={e => {
+                            const val = Math.min(m.type === MetricType.RATING ? 10 : 100, Math.max(0, parseInt(e.target.value) || 0));
+                            const newValues = [...(newCandidate.metricValues || [])];
+                            newValues[idx] = { metricId: m.id, value: val };
+                            setNewCandidate({...newCandidate, metricValues: newValues});
+                          }}
+                          className="w-12 bg-white border border-slate-200 rounded px-1 py-0.5 text-[10px] font-mono font-bold text-center text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -441,20 +552,20 @@ export default function App() {
                   {recommendation && activeTab === 'promotion' && !isAnalyzing && (
                     <div className="space-y-6">
                       {/* Winner Card */}
-                      <div className="bg-slate-900 rounded-2xl p-8 text-white shadow-xl relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-8 opacity-10">
-                          <Trophy className="w-32 h-32" />
+                      <div className="bg-slate-900 rounded-2xl p-6 lg:p-8 text-white shadow-xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 lg:p-8 opacity-10">
+                          <Trophy className="w-24 h-24 lg:w-32 lg:h-32" />
                         </div>
                         <div className="relative z-10">
-                          <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-widest mb-4">
+                          <div className="flex items-center gap-2 text-indigo-400 text-[10px] font-bold uppercase tracking-widest mb-4">
                             <CheckCircle2 className="w-4 h-4" /> Audit Recommendation
                           </div>
-                          <h2 className="text-3xl font-bold mb-1">{winner?.name}</h2>
-                          <p className="text-slate-400 mb-6">{winner?.role} • {winner?.department}</p>
+                          <h2 className="text-2xl lg:text-3xl font-bold mb-1">{winner?.name}</h2>
+                          <p className="text-sm text-slate-400 mb-6">{winner?.role} • {winner?.department}</p>
                           
-                          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-                            <h4 className="text-sm font-bold uppercase text-indigo-300 mb-2">Reasoning</h4>
-                            <p className="text-sm leading-relaxed text-slate-200 italic">
+                          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 lg:p-6 border border-white/10">
+                            <h4 className="text-[10px] font-bold uppercase text-indigo-300 mb-2">Reasoning</h4>
+                            <p className="text-xs lg:text-sm leading-relaxed text-slate-200 italic">
                               "{recommendation.reasoning}"
                             </p>
                           </div>
