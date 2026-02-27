@@ -23,10 +23,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Candidate, Metric, MetricType, PromotionRecommendation, LayoffRecommendation } from './types';
 import { analyzePromotion } from './services/gemini';
 import { analyzeLayoffs } from './services/layoffService';
+import ChatInterface from './components/ChatInterface';
 
 const DEFAULT_METRICS: Metric[] = [
-  { id: 'm1', name: 'Performance KPI', type: MetricType.NUMBER, weight: 0.4 },
-  { id: 'm2', name: 'Leadership Potential', type: MetricType.RATING, weight: 0.3 },
+  { id: 'm1', name: 'Performance KPI', type: MetricType.NUMBER, weight: 0.3 },
+  { id: 'm5', name: 'Years of Service', type: MetricType.NUMBER, weight: 0.2 },
+  { id: 'm2', name: 'Leadership Potential', type: MetricType.RATING, weight: 0.2 },
   { id: 'm3', name: 'Technical Proficiency', type: MetricType.RATING, weight: 0.2 },
   { id: 'm4', name: 'Soft Skills', type: MetricType.RATING, weight: 0.1 },
 ];
@@ -91,7 +93,7 @@ export default function App() {
         tenure: `${years} years`,
         metricValues: currentMetrics.map(m => {
           let val = 0;
-          if (m.id === 'l5') val = years; // Sync Years of Service metric
+          if (m.id === 'l5' || m.id === 'm5') val = years; // Sync Years of Service metric for both modes
           else if (m.type === MetricType.RATING) val = Math.floor(Math.random() * 11);
           else val = Math.floor(Math.random() * 101);
           return { metricId: m.id, value: val };
@@ -105,7 +107,7 @@ export default function App() {
     if (!newCandidate.name || !newCandidate.role) return;
     
     // Try to find Years of Service metric value to sync with tenure string
-    const yearsMetric = newCandidate.metricValues?.find(mv => mv.metricId === 'l5');
+    const yearsMetric = newCandidate.metricValues?.find(mv => mv.metricId === 'l5' || mv.metricId === 'm5');
     const tenureStr = yearsMetric ? `${yearsMetric.value} years` : (newCandidate.tenure || '1 year');
 
     const candidate: Candidate = {
@@ -686,6 +688,7 @@ export default function App() {
           </div>
         </div>
       </footer>
+      <ChatInterface />
     </div>
   );
 }

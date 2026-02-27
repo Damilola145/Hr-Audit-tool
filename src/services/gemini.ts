@@ -69,3 +69,36 @@ export async function analyzePromotion(
   const result = JSON.parse(text) as PromotionRecommendation;
   return result;
 }
+
+export async function chatWithGemini(
+  message: string,
+  history: { role: string; parts: { text: string }[] }[]
+): Promise<string> {
+  const model = "gemini-3.1-pro-preview";
+
+  const systemInstruction = `
+    You are an intelligent HR Assistant for Mecer Consulting, specifically designed to help analyze Google Form questionnaire findings and other HR data for Lubell Nigeria Limited.
+    
+    Your capabilities:
+    1. Analyze raw text or data pasted from Google Forms (e.g., employee feedback, survey results, performance reviews).
+    2. Identify trends, sentiment, and key insights from the data.
+    3. Provide recommendations based on the analysis to inform promotion or layoff decisions.
+    4. Maintain a professional, objective, and consultative tone.
+
+    When the user provides data:
+    - Summarize the key findings.
+    - Highlight any red flags or positive indicators.
+    - Suggest how this data should influence the current audit (e.g., "Employee X shows strong leadership traits in the survey, which aligns with the promotion criteria").
+  `;
+
+  const chat = ai.chats.create({
+    model,
+    config: {
+      systemInstruction,
+    },
+    history: history,
+  });
+
+  const result = await chat.sendMessage({ message });
+  return result.text || "I'm sorry, I couldn't generate a response.";
+}
